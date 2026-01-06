@@ -755,3 +755,26 @@ kind load docker-image nginx-operator:v0.0.3 --name <cluster-name>
 | Wrong chart in operator image | Clean images + rebuild project |
 | Unexplained cluster behavior | Delete Kind cluster (Option 2) |
 | Testing from absolute scratch | Delete Kind cluster (Option 2) |
+
+---
+
+## 📖 References
+
+| Resource | URL |
+|----------|-----|
+| **Helm Operator Tutorial** | https://sdk.operatorframework.io/docs/building-operators/helm/tutorial/ |
+| **Operator SDK Documentation** | https://sdk.operatorframework.io/docs/ |
+| **Helm Operator Advanced Features** | https://sdk.operatorframework.io/docs/building-operators/helm/reference/ |
+| **Operator SDK GitHub** | https://github.com/operator-framework/operator-sdk |
+| **Helm Documentation** | https://helm.sh/docs/ |
+
+### Base Image Details
+
+The Helm operator uses a pre-built base image that handles all reconciliation logic:
+
+| Component | Details |
+|-----------|---------|
+| **Image** | `quay.io/operator-framework/helm-operator:v1.39.1` |
+| **Source Code** | [operator-sdk/images/helm-operator](https://github.com/operator-framework/operator-sdk/tree/master/images/helm-operator) |
+| **Architectures** | `amd64`, `arm64`, `ppc64le`, `s390x` |
+| **Reconciler Logic** | [internal/helm/controller/reconciler.go](https://github.com/operator-framework/operator-sdk/blob/master/internal/helm/controller/reconciler.go) |
