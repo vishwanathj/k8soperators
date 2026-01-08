@@ -1,0 +1,27 @@
+FROM python:3.12
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y make curl && rm -rf /var/lib/apt/lists/*
+
+# Install Ansible and Python dependencies
+RUN pip install --no-cache-dir \
+    ansible \
+    ansible-runner \
+    ansible-runner-http \
+    openshift \
+    kubernetes \
+    jmespath
+
+# Install Operator SDK
+ARG ARCH=amd64
+ARG OS=linux
+ARG VER=v1.39.1
+
+RUN curl -LO "https://github.com/operator-framework/operator-sdk/releases/download/${VER}/operator-sdk_${OS}_${ARCH}" \
+    && chmod +x operator-sdk_${OS}_${ARCH} \
+    && mv operator-sdk_${OS}_${ARCH} /usr/local/bin/operator-sdk
+
+# Verify installations
+RUN ansible --version && operator-sdk version
+
+WORKDIR /app
