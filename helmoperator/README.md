@@ -158,47 +158,13 @@ docker run -itd \
 >
 > ⚠️ Running `docker system prune --volumes` or `docker volume rm go-bin` will delete the volume and require reinstallation of both tools.
 
-**Auto-Install Enhancement:** To automatically install both tools if missing, create an entrypoint script:
+**Auto-Install Enhancement:** This directory includes an `entrypoint.sh` script that automatically installs Helm and Operator SDK if missing.
 
-**entrypoint.sh** (save this in your project directory):
+See: [`entrypoint.sh`](./entrypoint.sh)
 
-```bash
-#!/bin/bash
-set -e
-
-# Auto-install Helm if not present
-if ! command -v helm &> /dev/null; then
-    echo "⚙️  helm not found. Installing..."
-    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-    echo "✅ helm installed successfully!"
-else
-    echo "✅ helm already installed: $(helm version --short)"
-fi
-
-# Auto-install operator-sdk if not present
-if ! command -v operator-sdk &> /dev/null; then
-    echo "⚙️  operator-sdk not found. Installing..."
-    ARCH=amd64
-    OS=linux
-    VER=v1.39.1
-    curl -sLO "https://github.com/operator-framework/operator-sdk/releases/download/${VER}/operator-sdk_${OS}_${ARCH}"
-    chmod +x operator-sdk_${OS}_${ARCH}
-    mv operator-sdk_${OS}_${ARCH} /usr/local/bin/operator-sdk
-    echo "✅ operator-sdk ${VER} installed successfully!"
-else
-    echo "✅ operator-sdk already installed: $(operator-sdk version | head -1)"
-fi
-
-# Execute the passed command or start bash
-exec "${@:-bash}"
-```
-
-Make it executable and run the container with the custom entrypoint:
+Run the container with the custom entrypoint:
 
 ```bash
-# Make the script executable (one-time)
-chmod +x entrypoint.sh
-
 # Run container with auto-install entrypoint
 docker run -itd \
   --name go-dev \
@@ -221,34 +187,15 @@ Now every time the container starts, it will automatically check for and install
 
 #### Option 2: Build a Custom Image
 
-Create a `Dockerfile` with `helm` and `operator-sdk` pre-installed. This is cleaner but requires you to maintain and rebuild the image when updating versions.
+This directory includes a `Dockerfile.dev` with Helm and Operator SDK pre-installed. This is cleaner but requires you to maintain and rebuild the image when updating versions.
 
-**Dockerfile:**
-
-```dockerfile
-FROM golang:1.25
-
-# Install Helm
-RUN curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-
-# Install Operator SDK
-ARG ARCH=amd64
-ARG OS=linux
-ARG VER=v1.39.1
-
-RUN curl -LO "https://github.com/operator-framework/operator-sdk/releases/download/${VER}/operator-sdk_${OS}_${ARCH}" \
-    && chmod +x operator-sdk_${OS}_${ARCH} \
-    && mv operator-sdk_${OS}_${ARCH} /usr/local/bin/operator-sdk
-
-# Verify installations
-RUN helm version --short && operator-sdk version
-```
+See: [`Dockerfile.dev`](./Dockerfile.dev)
 
 **Build and run:**
 
 ```bash
 # Build the custom image
-docker build -t go-helm-operator-sdk:1.25 .
+docker build -f Dockerfile.dev -t go-helm-operator-sdk:1.25 .
 
 # Run using your custom image
 docker run -itd \
@@ -686,6 +633,8 @@ kubectl rollout restart deployment/<project-name>-controller-manager -n <project
 | `nil pointer dereference` during `operator-sdk init` | Bitnami chart OCI dependencies issue | Use simple chart (`helm create`) instead, or see Advanced section |
 | `already initialized` | Previous failed `operator-sdk init` left files | Remove `PROJECT`, `Makefile`, `config/`, `helm-charts/` and retry |
 | Operator running but no nginx pod | Check operator logs for errors | `kubectl logs -n <ns> deployment/<name> --tail=50` |
+| Old code still running after rebuild | Kind cached stale image | Delete image from Kind with `crictl rmi` before reloading |
+| Changes not taking effect | Docker/Podman layer cache | Rebuild with `docker build --no-cache` |
 
 ### Check Operator Logs
 
@@ -708,6 +657,8 @@ docker exec -it <cluster-name>-control-plane crictl images | grep nginx-operator
 
 ## 🧹 Clean Start Procedure
 
+> **⚠️ Important:** When rebuilding the operator image, **always delete the old image from Kind first** before loading the new one. Kind may cache images and use stale versions even after rebuilding locally.
+
 When troubleshooting gets messy, here's how to start fresh:
 
 ### Option 1: Clean Images Only (Quick)
@@ -718,16 +669,23 @@ Use when: Image tagging issues, wrong chart baked into image
 # 1. Undeploy operator
 make undeploy
 
-# 2. Delete operator images from Kind
+# 2. IMPORTANT: Delete operator images from Kind BEFORE loading new ones
 docker exec -it <cluster-name>-control-plane crictl rmi \
   $(docker exec <cluster-name>-control-plane crictl images | grep nginx-operator | awk '{print $3}') 2>/dev/null || true
 
-# 3. Delete local project and start fresh
-cd ..
-rm -rf nginx-operator
-mkdir nginx-operator && cd nginx-operator
+# 3. Rebuild without cache to ensure changes are included
+docker build --no-cache -t nginx-operator:v0.0.1 .
 
-# 4. Rebuild from scratch (helm create, operator-sdk init, etc.)
+# 4. Load fresh image into Kind
+kind load docker-image nginx-operator:v0.0.1 --name <cluster-name>
+
+# 5. Retag for Podman users
+docker exec -it <cluster-name>-control-plane ctr --namespace=k8s.io images tag \
+  localhost/nginx-operator:v0.0.1 \
+  docker.io/library/nginx-operator:v0.0.1
+
+# 6. Redeploy
+make deploy IMG=nginx-operator:v0.0.1
 ```
 
 ### Option 2: Delete Kind Cluster (Nuclear)

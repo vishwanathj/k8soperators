@@ -1,0 +1,16 @@
+FROM golang:1.25
+
+# Install Helm
+RUN curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+# Install Operator SDK
+ARG ARCH=amd64
+ARG OS=linux
+ARG VER=v1.39.1
+
+RUN curl -LO "https://github.com/operator-framework/operator-sdk/releases/download/${VER}/operator-sdk_${OS}_${ARCH}" \
+    && chmod +x operator-sdk_${OS}_${ARCH} \
+    && mv operator-sdk_${OS}_${ARCH} /usr/local/bin/operator-sdk
+
+# Verify installations
+RUN helm version --short && operator-sdk version
